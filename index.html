@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Packet Gate — Firewall & Monitoring Lab | Cybersecurity Learning Project</title>
+<meta name="description" content="An educational firewall-rule simulator with deterministic scenarios, stateful matching, and read-only Suricata EVE / Zeek log import.">
+<meta name="referrer" content="no-referrer">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EAF0F4;--panel:#fff;--ink:#12263A;--mute:#546577;--line:#C9D5DE;--allow:#0E7C66;--block:#B8323A;--accent:#1F5FBF;--tint:#F3F7FA;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1A26;--panel:#15283A;--ink:#E4EDF4;--mute:#9DB0C0;--line:#28405A;--allow:#4FD1B0;--block:#FF7A80;--accent:#7FB0FF;--tint:#102132;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0E1A26;--panel:#15283A;--ink:#E4EDF4;--mute:#9DB0C0;--line:#28405A;--allow:#4FD1B0;--block:#FF7A80;--accent:#7FB0FF;--tint:#102132;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:1040px;margin:0 auto;padding:40px 20px 72px}
+h1,h2,h3{font-family:Archivo,"Arial Black",sans-serif;font-stretch:112%;font-weight:800;line-height:1.08;margin:0}
+h1{font-size:clamp(34px,6vw,60px);max-width:16ch;letter-spacing:-.01em}
+h2{font-size:clamp(24px,3.4vw,32px);margin-bottom:12px}
+h3{font-size:18px;margin-bottom:6px}
+.lede{max-width:60ch;color:var(--mute);margin:16px 0 28px;font-size:18px}
+.mono,input,select,textarea{font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:14px}
+section{margin-top:64px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.sim{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:820px){.sim{grid-template-columns:1fr}}
+.ph{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--line)}
+.ph b{font-family:Archivo,sans-serif;font-stretch:112%;font-weight:800;font-size:16px}
+button,select,input{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+button{cursor:pointer;font:500 14px "IBM Plex Sans",sans-serif}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;padding:8px 16px}
+button:hover{border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rules{padding:10px 14px;display:grid;gap:8px}
+.rule{display:grid;grid-template-columns:22px 76px 66px minmax(130px,1fr) minmax(130px,1fr) 60px 100px auto;gap:6px;align-items:center;min-width:880px}
+.rule .n{color:var(--mute);font-family:"IBM Plex Mono",monospace;font-size:13px}
+.rule input{width:100%;min-width:0}
+.rule .mv{display:flex;gap:2px}.rule .mv button{padding:4px 7px}
+.rule.hit{outline:2px solid var(--accent);border-radius:6px}
+.rule select.a-allow{color:var(--allow);font-weight:600}.rule select.a-block{color:var(--block);font-weight:600}
+.foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);color:var(--mute);font-size:14px}
+.hdrs{display:grid;grid-template-columns:22px 76px 66px minmax(130px,1fr) minmax(130px,1fr) 60px 100px auto;gap:6px;padding:8px 14px 0;color:var(--mute);font-size:13px;min-width:880px}.rules,.rulehead{overflow-x:auto}
+@media(max-width:560px){.hdrs{display:none}.rule{grid-template-columns:22px 76px 66px minmax(130px,1fr) minmax(130px,1fr) 60px 100px auto}}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-weight:500;color:var(--mute);padding:8px 14px;border-bottom:1px solid var(--line)}
+td{padding:7px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+td.pk{font-family:"IBM Plex Mono",monospace;font-size:13px;white-space:nowrap}
+.res{display:inline-block;min-width:78px;font-weight:600}
+.allow{color:var(--allow)}.block{color:var(--block)}
+.flag{font-size:13px;color:var(--block)}
+.score{display:flex;align-items:baseline;gap:14px;padding:14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.score .big{font:800 44px/1 Archivo,sans-serif;font-stretch:112%}
+.score span.t{color:var(--mute)}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:820px){.grid3{grid-template-columns:1fr}}
+.card{padding:18px}
+.card p{margin:6px 0 12px;color:var(--mute);font-size:15px}
+.tbl{overflow-x:auto}
+.tbl table{min-width:640px}
+textarea{width:100%;min-height:150px;background:var(--tint);resize:vertical;padding:12px;border-radius:0 0 10px 10px;border:0;color:var(--ink)}
+ul.check{margin:0;padding-left:20px;max-width:70ch}ul.check li{margin:8px 0}
+small.note{display:block;color:var(--mute);margin-top:28px;max-width:70ch}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:18px}
+.notice{display:none;margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--tint);font-size:14px}
+.notice.show{display:block}.notice.error{border-color:var(--block);color:var(--block)}
+.notice.success{border-color:var(--allow);color:var(--allow)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px 14px;border-top:1px solid var(--line)}
+.metric{background:var(--tint);border-radius:7px;padding:10px}.metric b{display:block;font:800 24px/1.2 Archivo,sans-serif}.metric span{font-size:12px;color:var(--mute)}
+.filterbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line)}
+.filterbar select{max-width:180px}
+@media(max-width:560px){.metrics{grid-template-columns:1fr 1fr}.metric:last-child{grid-column:1/-1}}
+@media(prefers-reduced-motion:no-preference){tr.pop td{animation:fade .25s ease}@keyframes fade{from{opacity:0}to{opacity:1}}}
+
+:root{--warn:#9A6A00}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--warn:#F2C14E}}
+:root[data-theme="dark"]{--warn:#F2C14E}
+.mon{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-top:16px;align-items:start}
+@media(max-width:900px){.mon{grid-template-columns:1fr}}
+.metrics.m4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:560px){.metrics.m4{grid-template-columns:1fr 1fr}.metrics.m4 .metric:last-child{grid-column:auto}}
+.chart{padding:12px 14px 4px}.chart svg{width:100%;height:84px;display:block;background:var(--tint);border-radius:6px}
+.ca{fill:var(--allow)}.cb{fill:var(--block)}
+.legend{display:flex;gap:14px;padding:4px 14px 10px;font-size:13px;color:var(--mute)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.log{max-height:250px;overflow:auto;border-top:1px solid var(--line)}.log table{font-size:13px}.log td{padding:5px 14px}
+.tk{padding:10px 14px;display:grid;gap:6px;border-top:1px solid var(--line)}
+.tk div{display:grid;grid-template-columns:120px 1fr 36px;gap:8px;align-items:center;font-size:13px}
+.bar{display:flex;height:8px;border-radius:4px;background:var(--tint);overflow:hidden}.bar i{display:block;height:100%}.bar .al{background:var(--allow)}.bar .bl{background:var(--block)}
+.alerts{padding:12px 14px;display:grid;gap:10px;max-height:640px;overflow:auto}
+.alert{border:1px solid var(--line);border-left-width:6px;border-radius:8px;padding:10px 12px;background:var(--tint)}
+.alert.critical,.alert.high{border-left-color:var(--block)}.alert.medium{border-left-color:var(--warn)}.alert.low{border-left-color:var(--accent)}
+.alert.ack{opacity:.65}
+.alert h4{margin:0;font:600 15px "IBM Plex Sans",sans-serif}
+.alert .sv{font-weight:800;margin-right:6px}.alert.critical .sv,.alert.high .sv{color:var(--block)}.alert.medium .sv{color:var(--warn)}.alert.low .sv{color:var(--accent)}
+.alert .meta{font:12px "IBM Plex Mono",monospace;color:var(--mute);margin-top:2px}
+.alert p{margin:6px 0 8px;font-size:14px}.alert .acts{display:flex;gap:8px;flex-wrap:wrap}.alert .acts button{padding:4px 10px}
+.alert button:disabled{opacity:.55;cursor:default}
+.empty{color:var(--mute);margin:4px 0;font-size:14px}
+@media print{
+  body{background:#fff!important;color:#111!important}
+  main{max-width:none;padding:0}
+  button,.toolbar,.filterbar button,.filterbar select,.filterbar label select{display:none!important}
+  .panel{break-inside:avoid;box-shadow:none}
+  section{margin-top:28px}
+  .lede{color:#333!important}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+  <div>
+    <p class="mono" style="color:var(--accent);font-weight:500;margin:0 0 10px">PACKET GATE / FIREWALL AND MONITORING LAB · EDUCATIONAL SIMULATOR</p>
+    <h1>Build a firewall. See what gets through.</h1>
+  </div>
+  <button id="theme" type="button" aria-pressed="false">Toggle theme</button>
+</div>
+<p class="lede">A hands-on firewall lab. Create ordered rules, test twelve sample packets, inspect why each decision happened, and export a Linux ruleset for review. The monitor and attack scenarios are simulated locally in your browser; they do not capture packets from a real network.</p>
+<div class="panel card" role="note" style="border-left:5px solid var(--warn);margin:0 0 18px"><h3>Safety boundary</h3><p style="margin-bottom:0">This page is a learning simulator, not an installed firewall or an IDS/IPS. Exported <code>iptables</code> commands are text for review only. They are not run by this page. Test any rules on a disposable Linux lab host, keep console access available, and confirm SSH/admin access before applying firewall changes.</p></div>
+<div class="toolbar">
+  <button id="saveRules" type="button">Download rules JSON</button>
+  <button id="loadRules" type="button">Import rules JSON</button>
+  <input id="rulesFile" type="file" accept="application/json,.json" hidden>
+  <button id="resetLab" type="button">Reset lab</button>
+</div>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+</header>
+
+<div class="sim">
+  <div class="panel">
+    <div class="ph"><b>Your rules</b>
+      <label>Anything unmatched: <select id="policy"><option value="block">Block</option><option value="allow">Allow</option></select></label></div>
+    <div class="rulehead"><div class="hdrs"><span></span><span>Action</span><span>Protocol</span><span>Source IPv4/CIDR</span><span>Destination IPv4/CIDR</span><span>Port</span><span>Conn. state</span><span>Order</span></div></div>
+    <div class="rules" id="rules"></div>
+    <div class="foot"><button id="add">Add rule</button><button id="clear">Clear all</button><span>Rules run top to bottom. The first match wins.</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="ph"><b>Incoming traffic</b><button class="primary" id="run">Send traffic</button></div>
+    <div class="filterbar">
+      <label for="packetFilter">Show:</label>
+      <select id="packetFilter"><option value="all">All packets</option><option value="allow">Allowed</option><option value="block">Blocked</option><option value="flagged">Flagged decisions</option></select>
+      <button id="showAll" type="button">Show all</button>
+    </div>
+    <div class="tbl"><table id="pk"><thead><tr><th>Packet</th><th>What it is</th><th>Result / explanation</th></tr></thead><tbody></tbody></table></div>
+    <div class="score"><span class="big" id="sc">–</span><span class="t" id="st">Press “Send traffic” to test your rules.</span></div>
+    <div class="metrics">
+      <div class="metric"><b id="allowedCount">—</b><span>Allowed</span></div>
+      <div class="metric"><b id="blockedCount">—</b><span>Blocked</span></div>
+      <div class="metric"><b id="flaggedCount">—</b><span>Incorrect decisions</span></div>
+    </div>
+  </div>
+</div>
+
+<div style="margin:18px 0 0;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <span style="color:var(--mute)">Start from:</span>
+  <button type="button" data-pre="open">Wide open</button>
+  <button type="button" data-pre="deny">Block-list only</button>
+  <button type="button" data-pre="web">Web server, default deny</button>
+</div>
+
+<section id="monitor">
+<h2>Live monitor and alerts</h2>
+<p class="lede" style="margin:0 0 16px">Synthetic scenarios are reproducible and use fixed source/target addresses, ports and event timing. You can also import local Suricata EVE JSON or Zeek conn.log files for read-only analysis. The browser does not capture traffic, launch sensors, or change the operating-system firewall.</p>
+<div class="panel">
+ <div class="filterbar">
+  <button class="primary" id="mstart" type="button">Start monitoring</button>
+  <label>Traffic <select id="mrate"><option value="1">Normal</option><option value="2">Busy</option><option value="3">Heavy</option></select></label>
+  <label>Sensitivity <select id="msens"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
+  <button id="mclear" type="button">Clear data</button>
+  <span id="mstatus" role="status" style="color:var(--mute);font-size:14px">Monitoring is paused.</span>
+ </div>
+ <div class="filterbar" style="border-bottom:0">
+  <span style="color:var(--mute)">Deterministic scenario:</span>
+  <button type="button" data-atk="scan">Port scan</button><button type="button" data-atk="brute">SSH brute force</button><button type="button" data-atk="db">Database probe</button><button type="button" data-atk="icmp">ICMP flood</button><button type="button" data-atk="flood">HTTP flood</button><button type="button" id="runUnitTests">Run unit tests</button>
+ </div>
+ <div class="filterbar" style="border-top:0"><label for="monitorImport">Import real monitoring logs (read-only):</label><select id="monitorFormat"><option value="auto">Auto-detect</option><option value="suricata">Suricata EVE JSON</option><option value="zeek">Zeek conn.log (TSV/JSON)</option></select><input id="monitorImport" type="file" accept=".json,.log,.txt,application/json,text/plain"><button id="clearImported" type="button">Clear imported events</button><span id="importStatus" role="status" style="color:var(--mute);font-size:13px">No external log imported.</span></div><div id="testResults" class="panel card" hidden aria-live="polite"></div>
+</div>
+<div class="mon">
+ <div class="panel">
+  <div class="ph"><b>Traffic</b><span style="color:var(--mute);font-size:13px">Last 30 seconds</span></div>
+  <div class="metrics m4">
+   <div class="metric"><b id="mpps">0</b><span>Packets per second</span></div>
+   <div class="metric"><b id="mallow">–</b><span>Allowed share</span></div>
+   <div class="metric"><b id="mblock">0</b><span>Blocked in total</span></div>
+   <div class="metric"><b id="mopen">0</b><span>Open alerts</span></div>
+  </div>
+  <div class="chart"><svg id="chart" viewBox="0 0 600 80" preserveAspectRatio="none" role="img" aria-label="Allowed and blocked packets over the last 30 seconds"></svg></div>
+  <div class="legend"><span><i style="background:var(--allow)"></i>Allowed</span><span><i style="background:var(--block)"></i>Blocked</span></div>
+  <div class="tk" id="tk" aria-label="Busiest sources"></div>
+  <div class="log tbl"><table><thead><tr><th>Time</th><th>Source</th><th>Target</th><th>Decision</th></tr></thead><tbody id="mlog"></tbody></table></div>
+ </div>
+ <div class="panel">
+  <div class="ph"><b>Alerts</b><span style="display:flex;gap:6px;flex-wrap:wrap"><select id="afilter" aria-label="Alert filter"><option value="open">Open</option><option value="all">All</option></select><button id="aack" type="button">Acknowledge all</button><button id="acsv" type="button">Download CSV</button></span></div>
+  <div class="alerts" id="alerts"></div>
+  <div class="foot">Heuristic alerts are educational, not a replacement for a tuned IDS. Imported Suricata/Zeek records are parsed locally and shown as observations; importing a log does not connect to a sensor or block traffic.</div>
+ </div>
+</div>
+</section>
+
+<section>
+<h2>What the preset rule sets teach</h2>
+<div class="grid3">
+  <div class="panel card"><h3>Wide open</h3><p>Everything is allowed, so every scan and brute-force attempt reaches the server. This is where many first-time deployments start.</p></div>
+  <div class="panel card"><h3>Block-list only</h3><p>You block known bad ranges and allow the rest. It stops those attackers but misses the next new address, so it is a weak design.</p></div>
+  <div class="panel card"><h3>Default deny</h3><p>You allow only what the server needs and drop everything else. This is the standard approach, and it scores best here.</p></div>
+</div>
+</section>
+
+<section>
+<h2>Export to a real firewall</h2>
+<p class="lede" style="margin:0 0 14px">The exporter builds a dedicated custom chain instead of flushing the existing INPUT chain or changing its global default policy. Review every command and test on a lab machine before applying.</p>
+<div class="panel"><textarea id="ipt" readonly aria-label="iptables commands"></textarea></div>
+</section>
+
+<section>
+<h2>Types of firewall</h2>
+<div class="panel tbl"><table>
+<thead><tr><th>Type</th><th>What it checks</th><th>Good at</th><th>Limit</th></tr></thead>
+<tbody>
+<tr><td><b>Packet filter</b></td><td>Source, destination, protocol, port</td><td>Fast, simple perimeter rules</td><td>Cannot tell if a packet belongs to a real conversation</td></tr>
+<tr><td><b>Stateful</b></td><td>The same fields plus the connection state</td><td>Allowing replies while dropping unsolicited traffic</td><td>Does not read application content</td></tr>
+<tr><td><b>Web application firewall</b></td><td>HTTP requests and responses</td><td>Blocking SQL injection and cross-site scripting</td><td>Only protects the web traffic it sees</td></tr>
+<tr><td><b>Next-generation</b></td><td>Applications, users, threat signatures</td><td>Deep inspection in one device</td><td>Costly, and needs tuning to avoid false alarms</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2>Project scope and limitations</h2>
+<div class="panel card"><p><b>Implemented in this browser demo:</b> ordered allow/block rules; source and destination IPv4/CIDR matching; protocol, destination-port and connection-state matching; deterministic synthetic attack scenarios; browser-side unit tests; Suricata EVE JSON and Zeek conn.log import; heuristic alerts; JSON rule import/export; CSV alert export; and generation of a reviewed Linux iptables ruleset.</p><p><b>Not implemented:</b> packet capture, kernel firewall control, a live connection to Suricata/Zeek, automatic sensor deployment, automatic firewall changes, authenticated administration, persistent server-side storage, IPv6 matching, or production-grade intrusion detection. Alert thresholds are teaching heuristics, not validated detection models.</p><p style="margin-bottom:0"><b>Data handling:</b> rules, imported logs and alerts are processed in the browser. Imported files are not uploaded to a server. This adapter does not open a network connection to Suricata/Zeek; export files from your own authorized sensor and import them manually.</p></div>
+</section>
+
+<section>
+<h2>Hardening checklist</h2>
+<ul class="check">
+<li>Start with default deny, then open only the ports the service needs.</li>
+<li>Limit admin ports such as SSH (22) to a trusted range or a VPN.</li>
+<li>Never expose database ports such as 3306 to the internet.</li>
+<li>Log dropped packets and review the logs for repeated sources.</li>
+<li>Rate-limit login attempts to slow brute-force attacks.</li>
+<li>Review rules every few months and delete the ones nobody can explain.</li>
+</ul>
+<small class="note">Packet Gate is a teaching simulator. It matches on protocol, source/destination IPv4 or CIDR, destination port and the selected connection-state label. Its state labels are supplied test metadata, not kernel connection tracking. This simulator does not send live traffic. Only run real scans or tests on systems you own or have permission to test.</small>
+</section>
+</main>
+
+<script>
+'use strict';
+const PK=[
+ {p:'TCP',s:'203.0.113.9',d:443,l:'Visitor loads the site (HTTPS)',ok:1},
+ {p:'TCP',s:'198.51.100.7',d:80,l:'Visitor loads the site (HTTP)',ok:1},
+ {p:'TCP',s:'192.168.1.20',d:22,l:'Admin connects over SSH from the office',ok:1},
+ {p:'TCP',s:'185.220.101.4',d:22,l:'SSH brute-force attempt',ok:0},
+ {p:'TCP',s:'185.220.101.4',d:23,l:'Telnet probe from the same host',ok:0},
+ {p:'UDP',s:'203.0.113.50',d:53,l:'DNS query to this server',ok:0},
+ {p:'TCP',s:'45.155.205.2',dst:'192.168.1.10',d:3389,state:'NEW',l:'Remote desktop scan',ok:0},
+ {p:'TCP',s:'45.155.205.2',dst:'192.168.1.10',d:445,state:'NEW',l:'File-sharing probe',ok:0},
+ {p:'ICMP',s:'198.51.100.99',dst:'192.168.1.10',d:null,state:'NEW',l:'Ping sweep',ok:0},
+ {p:'TCP',s:'192.168.1.35',dst:'192.168.1.10',d:3306,state:'ESTABLISHED',l:'Database client on the office LAN',ok:1},
+ {p:'TCP',s:'91.240.118.1',dst:'192.168.1.10',d:3306,state:'NEW',l:'Database access from the internet',ok:0},
+ {p:'UDP',s:'203.0.113.77',dst:'192.168.1.10',d:123,state:'NEW',l:'Time sync request to this server',ok:0}
+];
+const PRE={
+ open:{policy:'allow',rules:[]},
+ deny:{policy:'allow',rules:[{a:'block',p:'TCP',s:'185.220.101.0/24',dst:'any',d:'',state:'any'},{a:'block',p:'TCP',s:'45.155.205.0/24',dst:'any',d:'',state:'any'}]},
+ web:{policy:'block',rules:[{a:'allow',p:'TCP',s:'any',dst:'192.168.1.10',d:'80',state:'NEW'},{a:'allow',p:'TCP',s:'any',dst:'192.168.1.10',d:'443',state:'NEW'},{a:'allow',p:'TCP',s:'192.168.0.0/16',dst:'192.168.1.10',d:'22',state:'NEW'},{a:'allow',p:'TCP',s:'192.168.0.0/16',dst:'192.168.1.10',d:'3306',state:'ESTABLISHED'}]}
+};
+PK.forEach(p=>{p.dst=p.dst||'192.168.1.10';p.state=p.state||'NEW';});
+let st=JSON.parse(JSON.stringify(PRE.web));
+let results=[];
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function notice(message,type=''){
+ const el=$('notice'); el.textContent=message; el.className='notice show'+(type?' '+type:'');
+}
+function validIPv4(ip){
+ if(typeof ip!=='string'||!ip.trim())return false;
+ const parts=ip.trim().split('.');
+ return parts.length===4&&parts.every(x=>/^\d{1,3}$/.test(x)&&Number(x)>=0&&Number(x)<=255&&String(Number(x))===x);
+}
+function validSource(value){
+ const s=(value||'').trim();
+ if(!s||s==='any')return true;
+ if(!s.includes('/'))return validIPv4(s);
+ const parts=s.split('/');
+ return parts.length===2&&validIPv4(parts[0])&&/^\d{1,2}$/.test(parts[1])&&Number(parts[1])>=0&&Number(parts[1])<=32;
+}
+function ip2n(ip){return ip.split('.').reduce((a,o)=>a*256+Number(o),0)>>>0}
+function sm(range,ip){
+ const r=(range||'').trim();
+ if(!r||r==='any')return true;
+ if(!validSource(r)||!validIPv4(ip))return false;
+ if(!r.includes('/'))return r===ip;
+ const [base,bitsText]=r.split('/'),bits=Number(bitsText);
+ const mask=bits===0?0:(0xFFFFFFFF<<(32-bits))>>>0;
+ return ((ip2n(base)&mask)>>>0)===((ip2n(ip)&mask)>>>0);
+}
+function validateRules(){
+ const errors=[];
+ st.rules.forEach((r,i)=>{
+  if(!['allow','block'].includes(r.a))errors.push(`Rule ${i+1}: choose Allow or Block.`);
+  if(!['any','TCP','UDP','ICMP'].includes(r.p))errors.push(`Rule ${i+1}: choose a supported protocol.`);
+  if(!validSource(r.s))errors.push(`Rule ${i+1}: enter a valid source IPv4 address or CIDR range (or "any").`);
+  if(!validSource(r.dst??'any'))errors.push(`Rule ${i+1}: enter a valid destination IPv4 address or CIDR range (or "any").`);
+  if(!['any','NEW','ESTABLISHED','RELATED','INVALID'].includes(r.state??'any'))errors.push(`Rule ${i+1}: choose a supported connection state.`);
+  const port=String(r.d??'').trim();
+  if(port&&r.p==='ICMP')errors.push(`Rule ${i+1}: ICMP rules do not use ports; clear the port field.`);
+  if(port&&r.p!=='ICMP'&&(!/^\d+$/.test(port)||Number(port)<1||Number(port)>65535))errors.push(`Rule ${i+1}: port must be a number from 1 to 65535.`);
+ });
+ return errors;
+}
+function ev(packet){
+ for(let i=0;i<st.rules.length;i++){
+  const r=st.rules[i];
+  const protocolMatches=r.p==='any'||r.p===packet.p;
+  const sourceMatches=sm(r.s,packet.s);
+  const destMatches=sm(r.dst??'any',packet.dst||'192.168.1.10');
+  const stateText=r.state??'any';
+  const stateMatches=stateText==='any'||stateText===(packet.state||'NEW');
+  const portText=String(r.d??'').trim();
+  const portMatches=!portText||(packet.d!==null&&Number(portText)===packet.d);
+  if(protocolMatches&&sourceMatches&&destMatches&&stateMatches&&portMatches)return {a:r.a,i,why:`Matched rule ${i+1}: ${r.a.toUpperCase()} ${r.p} src=${r.s||'any'} dst=${r.dst||'any'}${portText?' dport='+portText:''} state=${stateText}.`};
+ }
+ return {a:st.policy,i:-1,why:`No rule matched. Default policy is ${st.policy.toUpperCase()}.`};
+}
+function drawRules(){
+ $('rules').innerHTML=st.rules.length?st.rules.map((r,i)=>`<div class="rule" data-i="${i}">
+ <span class="n">${i+1}</span>
+ <select data-f="a" class="a-${esc(r.a)}" aria-label="Rule ${i+1} action"><option value="allow"${r.a==='allow'?' selected':''}>Allow</option><option value="block"${r.a==='block'?' selected':''}>Block</option></select>
+ <select data-f="p" aria-label="Rule ${i+1} protocol">${['any','TCP','UDP','ICMP'].map(o=>`<option value="${o}"${r.p===o?' selected':''}>${o}</option>`).join('')}</select>
+ <input data-f="s" value="${esc(r.s??'any')}" placeholder="any / source CIDR" aria-label="Rule ${i+1} source" title="Source IPv4 address, CIDR range, or any">
+ <input data-f="dst" value="${esc(r.dst??'any')}" placeholder="any / target CIDR" aria-label="Rule ${i+1} destination IP" title="Destination IPv4 address, CIDR range, or any">
+ <input data-f="d" value="${esc(r.d)}" placeholder="port" aria-label="Rule ${i+1} destination port" title="Port 1–65535; leave blank for any port">
+ <select data-f="state" aria-label="Rule ${i+1} connection state">${['any','NEW','ESTABLISHED','RELATED','INVALID'].map(o=>`<option value="${o}"${(r.state??'any')===o?' selected':''}>${o}</option>`).join('')}</select>
+ <span class="mv"><button data-m="-1" aria-label="Move rule ${i+1} up" title="Move up">↑</button><button data-m="1" aria-label="Move rule ${i+1} down" title="Move down">↓</button><button data-x aria-label="Delete rule ${i+1}" title="Delete rule">✕</button></span></div>`).join(''):'<p style="margin:4px 0;color:var(--mute)">No rules yet. Add one, or choose a preset below.</p>';
+ $('policy').value=st.policy;
+ exportIpt();
+}
+function exportIpt(){
+ const lines=[
+ '# Packet Gate generated rules — REVIEW BEFORE APPLYING',
+ '# Intended for a Linux lab host. Save current rules and test console access first.',
+ '# Rules are exported in configured order; no implicit stateful accept is added.',
+ '# This uses a dedicated chain; it does not flush the existing INPUT chain.',
+ 'iptables -N PACKET_GATE 2>/dev/null || true',
+ 'iptables -F PACKET_GATE',
+ ];
+ st.rules.forEach((r,i)=>{
+  const target=r.a==='allow'?'ACCEPT':'DROP',source=(r.s&&r.s!=='any')?` -s ${r.s}`:'',destination=(r.dst&&r.dst!=='any')?` -d ${r.dst}`:'';
+  const port=String(r.d??'').trim();
+  const state=r.state??'any';
+  const protocols=r.p==='any'?(port?['tcp','udp']:[null]):[r.p.toLowerCase()];
+  lines.push(`# Rule ${i+1}: ${r.a} ${r.p} source=${r.s||'any'} destination=${r.dst||'any'} port=${port||'any'} state=${state}`);
+  protocols.forEach(p=>lines.push(`iptables -A PACKET_GATE${p?' -p '+p:''}${source}${destination}${port&&p&&p!=='icmp'?' --dport '+port:''}${state!=='any'?' -m conntrack --ctstate '+state:''} -j ${target}`));
+ });
+ lines.push(st.policy==='block'?'iptables -A PACKET_GATE -j DROP':'iptables -A PACKET_GATE -j RETURN');
+ lines.push('iptables -C INPUT -j PACKET_GATE 2>/dev/null || iptables -I INPUT 1 -j PACKET_GATE');
+ lines.push('# Note: inspect existing rules and persistence before using on a production host.');
+ $('ipt').value=lines.join('\n');
+}
+function renderPackets(){
+ const filter=$('packetFilter').value;
+ const rows=$('pk').tBodies[0];
+ rows.innerHTML=PK.map((p,k)=>{
+  const r=results[k];
+  const visible=!r||filter==='all'||(filter==='allow'&&r.a==='allow')||(filter==='block'&&r.a==='block')||(filter==='flagged'&&!r.pass);
+  if(!visible)return '';
+  const decision=r?`<span class="res ${r.a}">${r.a==='allow'?'Allowed':'Blocked'}</span> <span class="mono" style="color:var(--mute)">${r.i>=0?'rule '+(r.i+1):'default'}</span><div>${esc(r.why)}</div>${!r.pass?`<div class="flag">${r.a==='allow'?'Unexpected traffic allowed':'Expected service/user blocked'}</div>`:''}`:'<span style="color:var(--mute)">Not tested</span>';
+  return `<tr><td class="pk">${p.p} ${p.s}${p.d!==null?':'+p.d:''}<div style="color:var(--mute)">→ ${esc(p.dst||'192.168.1.10')} · ${esc(p.state||'NEW')}</div></td><td>${esc(p.l)}</td><td>${decision}</td></tr>`;
+ }).join('');
+}
+function updateMetrics(){
+ if(!results.length){$('sc').textContent='–';$('st').textContent='Press “Send traffic” to test your rules.';$('allowedCount').textContent='—';$('blockedCount').textContent='—';$('flaggedCount').textContent='—';return;}
+ const allowed=results.filter(r=>r.a==='allow').length,blocked=results.length-allowed,flagged=results.filter(r=>!r.pass).length;
+ const good=results.length-flagged;
+ $('sc').textContent=`${good}/${results.length}`;
+ $('st').textContent=flagged===0?'Excellent: every sample packet received the expected decision.':'Review the flagged packets and adjust rule order or scope.';
+ $('allowedCount').textContent=allowed;$('blockedCount').textContent=blocked;$('flaggedCount').textContent=flagged;
+}
+function run(){
+ const errors=validateRules();
+ if(errors.length){notice(errors.join(' '),'error');return;}
+ notice('Simulation complete. These are illustrative packets, not live network traffic.','success');
+ results=PK.map(p=>{const v=ev(p);return {...v,pass:(v.a==='allow')===!!p.ok};});
+ renderPackets();updateMetrics();
+}
+function resetResults(){results=[];renderPackets();updateMetrics();}
+$('rules').addEventListener('change',e=>{
+ const row=e.target.closest('.rule');if(!row||!e.target.dataset.f)return;
+ const field=e.target.dataset.f;st.rules[Number(row.dataset.i)][field]=e.target.value;
+ if(field==='a')e.target.className='a-'+e.target.value;
+ resetResults();exportIpt();
+});
+$('rules').addEventListener('input',e=>{
+ const row=e.target.closest('.rule');if(!row||!e.target.dataset.f)return;
+ st.rules[Number(row.dataset.i)][e.target.dataset.f]=e.target.value;
+ resetResults();exportIpt();
+});
+$('rules').addEventListener('click',e=>{
+ const b=e.target.closest('button'),row=e.target.closest('.rule');if(!b||!row)return;
+ const i=Number(row.dataset.i);
+ if('x' in b.dataset)st.rules.splice(i,1);
+ else {const j=i+Number(b.dataset.m);if(j<0||j>=st.rules.length)return;[st.rules[i],st.rules[j]]=[st.rules[j],st.rules[i]];}
+ drawRules();resetResults();
+});
+$('policy').onchange=e=>{st.policy=e.target.value;exportIpt();resetResults();};
+$('add').onclick=()=>{st.rules.push({a:'allow',p:'TCP',s:'any',dst:'any',d:'',state:'any'});drawRules();resetResults();notice('Rule added. New rules are evaluated in order from top to bottom.');};
+$('clear').onclick=()=>{st.rules=[];drawRules();resetResults();notice('All rules cleared. The default policy now controls every packet.');};
+$('run').onclick=run;
+$('packetFilter').onchange=renderPackets;
+$('showAll').onclick=()=>{$('packetFilter').value='all';renderPackets();};
+document.querySelectorAll('[data-pre]').forEach(b=>b.onclick=()=>{
+ st=JSON.parse(JSON.stringify(PRE[b.dataset.pre]));drawRules();resetResults();
+ notice(`Loaded preset: ${b.textContent.trim()}. Send traffic to evaluate it.`);run();
+});
+$('resetLab').onclick=()=>{st=JSON.parse(JSON.stringify(PRE.web));drawRules();resetResults();$('packetFilter').value='all';notice('Lab reset to the Web server, default-deny preset.','success');};
+$('saveRules').onclick=()=>{
+ const blob=new Blob([JSON.stringify({version:1,policy:st.policy,rules:st.rules},null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='packet-gate-rules.json';a.click();URL.revokeObjectURL(url);
+ notice('Rules JSON export started.','success');
+};
+$('loadRules').onclick=()=>$('rulesFile').click();
+$('rulesFile').onchange=async e=>{
+ const file=e.target.files&&e.target.files[0];if(!file)return;
+ try{
+  const parsed=JSON.parse(await file.text());
+  if(!parsed||!['allow','block'].includes(parsed.policy)||!Array.isArray(parsed.rules)||parsed.rules.length>100)throw new Error('File must contain a valid policy and up to 100 rules.');
+  const clean=parsed.rules.map(r=>({a:r.a,p:r.p,s:String(r.s??'any'),dst:String(r.dst??'any'),d:String(r.d??''),state:String(r.state??'any')}));
+  const old=st;st={policy:parsed.policy,rules:clean};const errors=validateRules();
+  if(errors.length){st=old;throw new Error(errors.join(' '));}
+  drawRules();resetResults();notice('Rules imported and validated. Run the simulation to test them.','success');
+ }catch(err){notice('Import failed: '+err.message,'error');}
+ e.target.value='';
+};
+$('theme').onclick=()=>{
+ const root=document.documentElement,currentlyDark=root.dataset.theme==='dark';
+ root.dataset.theme=currentlyDark?'light':'dark';
+ $('theme').setAttribute('aria-pressed',String(!currentlyDark));
+ $('theme').textContent=currentlyDark?'Use dark theme':'Use light theme';
+};
+/* ---- Live monitor, alerting and detection (simulated traffic) ---- */
+const SENSITIVE=[23,445,1433,3306,3389,5900];
+const SENS={low:{scan:10,brute:12,icmp:20,spike:40},medium:{scan:6,brute:8,icmp:12,spike:25},high:{scan:4,brute:5,icmp:8,spike:15}};
+const PUB=[].concat(...['203.0.113.','198.51.100.','192.0.2.'].map(b=>[9,21,44,50,77,88,130,140].map(n=>b+n)));
+const rnd=n=>Math.floor(Math.random()*n),pick=a=>a[rnd(a.length)];
+const fmt=t=>{t=Math.floor(t);return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');};
+const SEV={critical:'Critical',high:'High',medium:'Medium',low:'Low'};
+let M;
+function mInit(){M={on:false,timer:null,tick:0,events:[],hist:[],pending:[],alerts:[],aid:0,nb:0,dirty:true};}
+mInit();
+function legit(){const r=Math.random();
+ if(r<.5)return{p:'TCP',s:pick(PUB),d:Math.random()<.75?443:80};
+ if(r<.62)return{p:'UDP',s:pick(PUB),d:53};
+ if(r<.7)return{p:'UDP',s:pick(PUB),d:123};
+ if(r<.76)return{p:'TCP',s:'192.168.1.35',d:3306};
+ if(r<.78)return{p:'TCP',s:'192.168.1.20',d:22};
+ if(r<.83)return{p:'TCP',s:pick(PUB),d:pick([21,25,5900,8080,8443])};
+ return{p:'TCP',s:pick(PUB),d:443};}
+const ATK={
+ scan:()=>Array.from({length:14},(_,i)=>({p:'TCP',s:'45.155.205.22',dst:'192.168.1.10',d:[21,22,23,25,80,110,139,443,445,1433,3306,3389,5900,8080][i],state:'NEW'})),
+ brute:()=>Array.from({length:20},(_,i)=>({p:'TCP',s:'185.220.101.44',dst:'192.168.1.10',d:22,state:'NEW'})),
+ db:()=>Array.from({length:6},(_,i)=>({p:'TCP',s:'91.240.118.1',dst:'192.168.1.10',d:3306,state:'NEW'})),
+ icmp:()=>Array.from({length:30},(_,i)=>({p:'ICMP',s:'198.51.100.99',dst:'192.168.1.10',d:null,state:'NEW'})),
+ flood:()=>Array.from({length:70},(_,i)=>({p:'TCP',s:'91.240.118.77',dst:'192.168.1.10',d:443,state:'NEW'}))};
+function raise(type,src,sev,title,detail,tech){
+ const key=type+'|'+src,now=M.tick*.5,last=M.alerts.find(a=>a.key===key);
+ if(last&&now-last.t<30)return;
+ M.alerts.unshift({id:++M.aid,key,t:now,type,src,sev,title,detail,tech:tech||'',ack:false});
+ if(M.alerts.length>60)M.alerts.pop();
+ M.dirty=true;$('mstatus').textContent=`New ${sev} alert: ${title} from ${src}.`;}
+function detect(t){
+ const by={},th=SENS[$('msens').value];
+ for(let k=M.events.length-1;k>=0;k--){const e=M.events[k];if(t-e.t>10)break;if(!e.s.startsWith('192.168.'))(by[e.s]=by[e.s]||[]).push(e);}
+ for(const s in by){
+  const L=by[s],open=x=>x.filter(e=>e.a==='allow'&&!e.observed).length;
+  const ports=new Set(L.filter(e=>e.d!==null).map(e=>e.d)),auth=L.filter(e=>[22,23,3389].includes(e.d)),icmp=L.filter(e=>e.p==='ICMP');
+  const exp=L.filter(e=>e.a==='allow'&&!e.observed&&SENSITIVE.includes(e.d)),probe=L.filter(e=>e.a==='block'&&SENSITIVE.includes(e.d));
+  if(exp.length)raise('exposure',s,'critical','Sensitive service exposed',`${exp.length} packet(s) to port ${[...new Set(exp.map(e=>e.d))].join(', ')} from outside were allowed. Close or restrict that port.`);
+  if(ports.size>=th.scan)raise('scan',s,open(L)?'high':'medium','Port scan',`${ports.size} ports probed in 10 seconds. `+(open(L)?`${open(L)} probes were allowed through.`:'The firewall blocked every probe.'),'T1046');
+  else if(probe.length>=3)raise('probe',s,'low','Blocked probe of sensitive service',`${probe.length} attempts on port ${[...new Set(probe.map(e=>e.d))].join(', ')} were blocked. The rules are working, but the source is worth watching.`);
+  if(auth.length>=th.brute)raise('brute',s,open(auth)?'critical':'high','Brute-force login attempts',`${auth.length} login-port attempts in 10 seconds. `+(open(auth)?`${open(auth)} reached the server.`:'All were blocked.'),'T1110');
+  if(icmp.length>=th.icmp)raise('icmp',s,open(icmp)?'medium':'low','ICMP flood',`${icmp.length} ping requests in 10 seconds. `+(open(icmp)?`${open(icmp)} were answered.`:'All were blocked.'),'T1498');
+  if(L.length>=th.spike)raise('spike',s,'high','Traffic spike',`${L.length} packets from one source in 10 seconds, ${open(L)} allowed.`,'T1498');
+ }}
+function mTick(){
+ M.tick++;const t=M.tick*.5,n=Math.round(Number($('mrate').value)*(2+Math.random()*3)),batch=[];
+ for(let i=0;i<n;i++)batch.push(legit());
+ batch.push(...M.pending.splice(0,6));
+ let a=0,b=0;
+ batch.forEach(p=>{const v=ev(p);M.events.push({t,p:p.p,s:p.s,dst:p.dst||'192.168.1.10',d:p.d,state:p.state||'NEW',a:v.a,i:v.i,source:'simulated'});if(v.a==='allow')a++;else{b++;M.nb++;}});
+ if(M.events.length>800)M.events.splice(0,M.events.length-800);
+ M.hist.push({a,b});if(M.hist.length>60)M.hist.shift();
+ detect(t);mRender();}
+function mStart(){
+ if(M.on)return true;
+ const errors=validateRules();if(errors.length){notice(errors.join(' '),'error');return false;}
+ M.on=true;M.timer=setInterval(mTick,500);$('mstart').textContent='Pause monitoring';$('mstatus').textContent='Monitoring is running on simulated traffic.';return true;}
+function mStop(){clearInterval(M.timer);M.on=false;$('mstart').textContent='Start monitoring';$('mstatus').textContent='Monitoring is paused.';}
+function mReset(){mStop();mInit();mRender();}
+const blockedSrc=s=>st.rules.some(r=>r.a==='block'&&r.p==='any'&&(r.s||'').trim()===s&&!String(r.d||'').trim());
+function drawAlerts(){
+ const f=$('afilter').value,list=M.alerts.filter(a=>f==='all'||!a.ack);
+ $('alerts').innerHTML=list.length?list.map(a=>`<article class="alert ${a.sev}${a.ack?' ack':''}" data-id="${a.id}"><h4><span class="sv">${SEV[a.sev]}</span>${esc(a.title)}</h4><div class="meta">T+${fmt(a.t)} / ${esc(a.src)}${a.tech?' / MITRE ATT&amp;CK '+a.tech:''}</div><p>${esc(a.detail)}</p><div class="acts"><button type="button" data-ack${a.ack?' disabled':''}>${a.ack?'Acknowledged':'Acknowledge'}</button><button type="button" data-blk${blockedSrc(a.src)?' disabled':''}>${blockedSrc(a.src)?'Source blocked':'Block source'}</button></div></article>`).join(''):`<p class="empty">${M.alerts.length?'No open alerts. Switch the filter to see acknowledged ones.':'No alerts yet. Start monitoring, then simulate an attack to see the sensor respond.'}</p>`;
+ $('mopen').textContent=M.alerts.filter(a=>!a.ack).length;M.dirty=false;}
+function mRender(){
+ const h=M.hist,last=h.slice(-4),tot=last.reduce((x,y)=>x+y.a+y.b,0),al=last.reduce((x,y)=>x+y.a,0);
+ $('mpps').textContent=(tot/Math.max(1,last.length)*2).toFixed(0);
+ $('mallow').textContent=tot?Math.round(al/tot*100)+'%':'–';
+ $('mblock').textContent=M.nb;
+ const mx=Math.max(8,...h.map(x=>x.a+x.b));
+ $('chart').innerHTML=h.map((x,i)=>{const ha=x.a/mx*76,hb=x.b/mx*76;return `<rect class="ca" x="${i*10+1}" y="${80-ha}" width="8" height="${ha}"/><rect class="cb" x="${i*10+1}" y="${80-ha-hb}" width="8" height="${hb}"/>`;}).join('');
+ const cnt={};M.events.slice(-200).forEach(e=>{const c=cnt[e.s]=cnt[e.s]||{n:0,b:0};c.n++;if(e.a==='block')c.b++;});
+ const top=Object.entries(cnt).sort((x,y)=>y[1].n-x[1].n).slice(0,5),tm=top.length?top[0][1].n:1;
+ $('tk').innerHTML=top.length?top.map(([s,c])=>`<div><span class="mono">${esc(s)}</span><span class="bar"><i class="al" style="width:${(c.n-c.b)/tm*100}%"></i><i class="bl" style="width:${c.b/tm*100}%"></i></span><span class="mono">${c.n}</span></div>`).join(''):'<p class="empty" style="margin:0">Busiest sources appear here.</p>';
+ $('mlog').innerHTML=M.events.length?M.events.slice(-12).reverse().map(e=>`<tr><td class="mono">${fmt(e.t)}</td><td class="mono">${esc(e.s)}</td><td class="mono">${esc(e.dst||'—')} · ${e.p}${e.d!==null&&e.d!==undefined?':'+e.d:''} · ${esc(e.state||'—')}</td><td><span class="res ${e.a}">${e.observed?'Observed':(e.a==='allow'?'Allowed':'Blocked')}</span></td></tr>`).join(''):'<tr><td colspan="4" class="empty" style="padding:10px 14px">No traffic yet. Start monitoring.</td></tr>';
+ if(M.dirty)drawAlerts();}
+$('mstart').onclick=()=>M.on?mStop():mStart();
+$('mclear').onclick=()=>{mReset();notice('Monitoring data cleared.','success');};
+$('afilter').onchange=drawAlerts;
+$('msens').onchange=()=>{$('mstatus').textContent='Sensitivity changed. Higher settings catch more but raise more false alarms.';};
+document.querySelectorAll('[data-atk]').forEach(b=>b.onclick=()=>{
+ if(M.on)mStop();
+ const errors=validateRules();if(errors.length){notice(errors.join(' '),'error');return;}
+ const scenario=ATK[b.dataset.atk]();const base=M.tick*.5;let allowed=0,blocked=0;
+ scenario.forEach((p,i)=>{const v=ev(p),t=base+(i+1)*0.01;M.events.push({t,p:p.p,s:p.s,dst:p.dst,d:p.d,state:p.state,a:v.a,i:v.i,source:'deterministic-scenario'});if(v.a==='allow')allowed++;else{blocked++;M.nb++;}});
+ M.tick+=1;M.hist.push({a:allowed,b:blocked});if(M.hist.length>60)M.hist.shift();detect(M.tick*.5);mRender();$('mstatus').textContent=`Deterministic ${b.textContent.trim()} scenario completed: ${scenario.length} events, ${allowed} allowed, ${blocked} blocked.`;});
+$('aack').onclick=()=>{M.alerts.forEach(a=>a.ack=true);drawAlerts();};
+$('alerts').addEventListener('click',e=>{
+ const b=e.target.closest('button'),c=e.target.closest('.alert');if(!b||!c)return;
+ const a=M.alerts.find(x=>x.id===Number(c.dataset.id));if(!a)return;
+ if('ack' in b.dataset)a.ack=true;
+ if('blk' in b.dataset&&!blockedSrc(a.src)){
+  st.rules.unshift({a:'block',p:'any',s:a.src,d:''});a.ack=true;drawRules();resetResults();
+  const m=`Added rule 1: block all traffic from ${a.src}. The iptables export now includes it.`;notice(m,'success');$('mstatus').textContent=m;}
+ drawAlerts();});
+$('acsv').onclick=()=>{
+ const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+ const rows=[['time','severity','title','source','detail','acknowledged'],...M.alerts.slice().reverse().map(a=>['T+'+fmt(a.t),a.sev,a.title,a.src,a.detail,a.ack])];
+ const blob=new Blob([rows.map(r=>r.map(q).join(',')).join('\n')],{type:'text/csv'}),url=URL.createObjectURL(blob),l=document.createElement('a');
+ l.href=url;l.download='packet-gate-alerts.csv';l.click();URL.revokeObjectURL(url);};
+// Read-only import adapters: Suricata EVE JSON and Zeek conn.log (TSV or JSON).
+function normalizeExternalEvent(o,source){
+ const proto=String(o.proto||o.protocol||'UNKNOWN').toUpperCase();
+ const dstPort=o.dest_port??o.id?.resp_p??o.resp_p??null;
+ const action=String(o.alert?.action||o.action||'observed').toLowerCase();
+ let decision=action.includes('drop')||action.includes('block')?'block':'allow';
+ return {t:M.tick*.5,p:proto,s:String(o.src_ip||o.id?.orig_h||o['id.orig_h']||o.orig_h||'unknown'),dst:String(o.dest_ip||o.id?.resp_h||o['id.resp_h']||o.resp_h||'unknown'),d:dstPort===null?null:Number(dstPort),state:String(o.state||o.conn_state||'OBSERVED'),a:decision,observed:!(o.alert&&o.alert.action)&&!o.action,i:-1,source};
+}
+function parseZeekTSV(text){
+ const lines=text.split(/\r?\n/);let fields=[],types=[],events=[];let separator='\t';
+ for(const line of lines){if(line.startsWith('#separator ')){const raw=line.slice(11);separator=raw==='\\x09'?'\t':raw==='\\x20'?' ':raw;}
+ else if(line.startsWith('#fields'+separator))fields=line.slice(8).split(separator);
+ else if(line.startsWith('#types'+separator))types=line.slice(7).split(separator);
+ else if(line&&!line.startsWith('#')){const vals=line.split(separator);if(fields.length&&vals.length>=fields.length){const o={};fields.forEach((f,i)=>o[f]=vals[i]==='-'?null:vals[i]);events.push(normalizeExternalEvent({proto:o.proto,orig_h:o['id.orig_h'],resp_h:o['id.resp_h'],resp_p:o['id.resp_p'],conn_state:o.conn_state},'Zeek conn.log'));}}
+ }
+ return events;
+}
+function parseExternalLogs(text,format){
+ const trimmed=text.trim();if(!trimmed)throw new Error('The selected file is empty.');
+ if(format==='auto')format=(trimmed.startsWith('{')||trimmed.startsWith('['))?'suricata':'zeek';
+ if(format==='suricata'){
+  let records;try{const parsed=JSON.parse(trimmed);records=Array.isArray(parsed)?parsed:[parsed];}catch(e){records=trimmed.split(/\r?\n/).filter(Boolean).map(line=>JSON.parse(line));}
+  return records.filter(o=>o&&typeof o==='object'&&o.event_type).map(o=>normalizeExternalEvent(o,'Suricata EVE')).filter(e=>e.s!=='unknown'||e.dst!=='unknown');
+ }
+ if(format==='zeek'){
+  if(trimmed.startsWith('{')||trimmed.startsWith('[')){const parsed=JSON.parse(trimmed),records=Array.isArray(parsed)?parsed:[parsed];return records.map(o=>normalizeExternalEvent(o,'Zeek JSON'));}
+  return parseZeekTSV(text);
+ }
+ throw new Error('Choose Suricata EVE JSON or Zeek conn.log.');
+}
+$('monitorImport').addEventListener('change',async e=>{
+ const file=e.target.files&&e.target.files[0];if(!file)return;
+ try{const imported=parseExternalLogs(await file.text(),$('monitorFormat').value);if(!imported.length)throw new Error('No supported records found. Confirm this is Suricata EVE JSON or Zeek conn.log.');
+  imported.forEach((evn,i)=>{evn.t=M.tick*.5+(i+1)*0.001;M.events.push(evn);if(evn.a==='block')M.nb++;});if(M.events.length>800)M.events.splice(0,M.events.length-800);
+  M.hist.push({a:imported.filter(x=>x.a==='allow'&&!x.observed).length,b:imported.filter(x=>x.a==='block').length});if(M.hist.length>60)M.hist.shift();
+  $('importStatus').textContent=`Imported ${imported.length} records from ${file.name}; read-only observations.`;$('mstatus').textContent='External log imported. Generic flow/connection records are observations, not verified firewall decisions.';detect(M.tick*.5);mRender();
+ }catch(err){$('importStatus').textContent='Import failed: '+err.message;notice('Log import failed: '+err.message,'error');}e.target.value='';
+});
+$('clearImported').onclick=()=>{M.events=M.events.filter(e=>!String(e.source||'').includes('Suricata')&&!String(e.source||'').includes('Zeek'));M.alerts=M.alerts.filter(a=>!String(a.detail).includes('imported log'));mRender();$('importStatus').textContent='Imported monitoring records cleared.';};
+function runUnitTests(){
+ const cases=[];const test=(name,fn)=>{try{if(!fn())throw new Error('assertion failed');cases.push({name,ok:true});}catch(e){cases.push({name,ok:false,error:e.message});}};
+ test('IPv4 accepts valid address',()=>validIPv4('192.168.1.10'));
+ test('IPv4 rejects octet above 255',()=>!validIPv4('192.168.1.256'));
+ test('CIDR accepts /0 and /32',()=>validSource('0.0.0.0/0')&&validSource('192.168.1.10/32'));
+ test('CIDR rejects prefix above 32',()=>!validSource('10.0.0.0/33'));
+ test('CIDR matches member address',()=>sm('192.168.1.0/24','192.168.1.20'));
+ test('CIDR rejects non-member address',()=>!sm('192.168.1.0/24','192.168.2.20'));
+ const old=st;st={policy:'block',rules:[{a:'allow',p:'TCP',s:'any',dst:'192.168.1.10',d:'443',state:'NEW'}]};
+ test('rule matches protocol/source/destination/port/state',()=>ev({p:'TCP',s:'203.0.113.5',dst:'192.168.1.10',d:443,state:'NEW'}).a==='allow');
+ test('destination IP mismatch falls through to default deny',()=>ev({p:'TCP',s:'203.0.113.5',dst:'192.168.1.11',d:443,state:'NEW'}).a==='block');
+ test('connection-state mismatch falls through to default deny',()=>ev({p:'TCP',s:'203.0.113.5',dst:'192.168.1.10',d:443,state:'ESTABLISHED'}).a==='block');
+ test('first matching rule wins',()=>{st.rules=[{a:'block',p:'TCP',s:'any',dst:'any',d:'',state:'any'},{a:'allow',p:'TCP',s:'any',dst:'any',d:'443',state:'any'}];return ev({p:'TCP',s:'203.0.113.5',dst:'192.168.1.10',d:443,state:'NEW'}).a==='block';});
+ test('deterministic scan fixture has stable 14 events',()=>ATK.scan().length===14&&ATK.scan()[0].s==='45.155.205.22');
+ test('Suricata EVE record normalizes source and destination',()=>{const e=parseExternalLogs(JSON.stringify({event_type:'flow',src_ip:'192.0.2.1',dest_ip:'192.0.2.10',dest_port:443,proto:'TCP'}),'suricata');return e.length===1&&e[0].s==='192.0.2.1'&&e[0].dst==='192.0.2.10';});
+ test('Zeek conn.log TSV parses connection tuple',()=>{const z='#separator \\x09\n#fields\tts\tuid\tid.orig_h\tid.orig_p\tid.resp_h\tid.resp_p\tproto\tservice\tconn_state\n#types\ttime\tstring\taddr\tport\taddr\tport\tstring\tstring\tstring\n1.0\tC1\t192.0.2.1\t50000\t192.0.2.10\t443\ttcp\thttps\tSF';const e=parseExternalLogs(z,'zeek');return e.length===1&&e[0].s==='192.0.2.1'&&e[0].dst==='192.0.2.10'&&e[0].d===443;});
+ st=old;return cases;
+}
+$('runUnitTests').onclick=()=>{const cases=runUnitTests(),passed=cases.filter(x=>x.ok).length;const box=$('testResults');box.hidden=false;box.innerHTML=`<h3>Browser unit tests: ${passed}/${cases.length} passed</h3><ul>${cases.map(c=>`<li>${c.ok?'✓':'✗'} ${esc(c.name)}${c.error?': '+esc(c.error):''}</li>`).join('')}</ul>`;notice(`${passed}/${cases.length} unit tests passed.`,passed===cases.length?'success':'error');};
+
+const _reset=$('resetLab').onclick;$('resetLab').onclick=()=>{_reset();mReset();};
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&M.on)mStop();});
+mRender();
+drawRules();resetResults();
+if(location.hash==='#test'){const tc=runUnitTests();const report=document.createElement('pre');report.id='automated-test-report';report.textContent=JSON.stringify({passed:tc.filter(x=>x.ok).length,total:tc.length,cases:tc},null,2);document.body.appendChild(report);}
+</script>
+</body>
+</html>
